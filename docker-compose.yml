@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: data-analyst-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-analyst}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-analyst}
+      - POSTGRES_DB=${POSTGRES_DB:-olist}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Only run on a completely fresh volume (Postgres's own convention).
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      # CSV source files referenced by 02-load-data.sql's COPY commands.
+      - ./db/data:/csv-data:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-analyst} -d ${POSTGRES_DB:-olist}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: data-analyst-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: data-analyst-n8n
+    ports:
+      - "5679:5678"
+
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - TZ=${TZ:-Europe/Prague}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Prague}
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_N8N_WEBHOOK_URL: ${VITE_N8N_WEBHOOK_URL}
+        VITE_N8N_AUTH_TOKEN: ${VITE_N8N_AUTH_TOKEN}
+    container_name: data-analyst-frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    depends_on:
+      n8n:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  n8n_data:

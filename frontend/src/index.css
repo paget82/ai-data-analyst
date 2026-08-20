@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-bg text-slate-100;
+    font-family: 'Inter', sans-serif;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2e3440 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #2e3440;
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid #00e0c6;
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  .gradient-teal {
+    background-image: linear-gradient(135deg, #00e0c6 0%, #00bfa5 100%);
+  }
+
+  .gradient-teal-text {
+    background-image: linear-gradient(135deg, #00e0c6 0%, #00bfa5 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .glass {
+    backdrop-filter: blur(10px);
+    background-color: rgba(21, 25, 35, 0.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Markdown content inside AI messages */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  @apply font-display font-bold text-slate-50 mt-3 mb-2;
+}
+.markdown-body h1 {
+  @apply text-xl;
+}
+.markdown-body h2 {
+  @apply text-lg;
+}
+.markdown-body h3 {
+  @apply text-base;
+}
+.markdown-body p {
+  @apply mb-2 leading-relaxed;
+}
+.markdown-body ul {
+  @apply list-disc list-inside mb-2 space-y-1;
+}
+.markdown-body ol {
+  @apply list-decimal list-inside mb-2 space-y-1;
+}
+.markdown-body strong {
+  @apply font-semibold text-slate-50;
+}
+.markdown-body code {
+  @apply bg-black/30 text-teal-start px-1.5 py-0.5 rounded text-sm;
+}
+.markdown-body pre {
+  @apply bg-black/40 rounded-xl p-3 overflow-x-auto mb-2;
+}
+.markdown-body pre code {
+  @apply bg-transparent p-0;
+}
+.markdown-body a {
+  @apply text-teal-start underline underline-offset-2;
+}

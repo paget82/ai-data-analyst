@@ -1,0 +1,322 @@
+{
+  "name": "AI Data Analyst Agent - main flow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "data-analyst-agent",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f01bce6c-0cc0-4b81-adc5-3c0b0c43bd3d",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "208939d9-893f-423f-a183-11434fffdfa1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PN5aCTJ3tJwiYxmt",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "24780ead-a36d-4d7a-ad42-a858d5fbd6fd",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "name": "database_query",
+        "description": "Call this tool to Convert natural language query into SQL and fetch the response from the database\n",
+        "workflowId": {
+          "__rl": true,
+          "value": "lYGCcO0ynRLOCRGP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/lYGCcO0ynRLOCRGP",
+          "cachedResultName": "AI Data Analyst Agent - sub flow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query_description": "={{ $fromAI('query_description', 'Natural language description of what data the user wants to query from the database', 'string') }}"
+          },
+          "matchingColumns": [
+            "query_description"
+          ],
+          "schema": [
+            {
+              "id": "query_description",
+              "displayName": "query_description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [
+        352,
+        288
+      ],
+      "id": "547393b4-faea-4032-a8f4-6e54c93a4cba",
+      "name": "database_query"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get agent response\nlet agentOutput = $input.item.json.output || $input.item.json;\n\n// Try to parse if it's a string\nif (typeof agentOutput === 'string') {\n  try {\n    agentOutput = JSON.parse(agentOutput);\n  } catch (e) {\n    // If not valid JSON, wrap it\n    agentOutput = {\n      response: agentOutput\n    };\n  }\n}\n\n// Ensure required fields exist\nconst response = {\n  response: agentOutput.response || \"I processed your request.\",\n  data: agentOutput.data || null,\n  visualization: agentOutput.visualization || null,\n  sql: agentOutput.sql || null\n};\n\n// Clean up null fields\nObject.keys(response).forEach(key => {\n  if (response[key] === null) {\n    delete response[key];\n  }\n});\n\nreturn [{ json: response }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        0
+      ],
+      "id": "0b84543e-f81d-4599-89c9-9fd49b4c5e0d",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=User Query:\n{{ $json.body.message }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=## Your Role\n\nYou are an AI Data Analyst assistant with access to a Brazilian E-Commerce database. Your job is to help users analyze data through natural language queries, providing insights, visualizations, and conversational responses.\n\n---\n\n## Database Schema & Context\n\n### Overview\n- **Database**: PostgreSQL (Supabase)\n- **Dataset**: Olist Brazilian E-Commerce (2016-2018)\n- **Total Orders**: ~100,000 orders\n- **Total Customers**: ~99,000 customers\n- **Date Range**: September 2016 - October 2018\n\n### Tables\n\n**1. customers**\n- customer_id (TEXT): Unique identifier\n- customer_unique_id (TEXT): Real customer ID (use for unique counting)\n- customer_zip_code_prefix (BIGINT): ZIP code\n- customer_city (TEXT): City name\n- customer_state (TEXT): State abbreviation (SP, RJ, MG, etc.)\n\n**2. orders** [CENTRAL TABLE]\n- order_id (TEXT): Unique order ID [PRIMARY]\n- customer_id (TEXT): Links to customers\n- order_status (TEXT): delivered, shipped, canceled, processing\n- order_purchase_timestamp (TEXT): When ordered (convert to timestamp)\n- order_delivered_customer_date (TEXT): When delivered\n- order_approved_at, order_delivered_carrier_date, order_estimated_delivery_date (TEXT)\n\n**3. order_items**\n- order_id (TEXT): Links to orders\n- order_item_id (BIGINT): Item sequence number\n- product_id (TEXT): Links to products\n- seller_id (TEXT): Links to sellers\n- price (DOUBLE): Item price in R$\n- freight_value (DOUBLE): Shipping cost\n\n**4. products**\n- product_id (TEXT): Unique product ID\n- product_category_name (TEXT): Category in Portuguese\n- product_weight_g, product_length_cm, product_height_cm, product_width_cm (BIGINT): Dimensions\n\n**5. sellers**\n- seller_id (TEXT): Unique seller ID\n- seller_city, seller_state, seller_zip_code_prefix (TEXT/BIGINT): Location\n\n**6. order_payments**\n- order_id (TEXT): Links to orders\n- payment_type (TEXT): credit_card, boleto, voucher, debit_card\n- payment_installments (BIGINT): Number of installments\n- payment_value (DOUBLE): Amount paid\n\n**7. order_reviews**\n- review_id (TEXT): Unique review ID\n- order_id (TEXT): Links to orders\n- review_score (BIGINT): 1-5 stars\n- review_comment_title, review_comment_message (TEXT): Review text\n\n**8. product_category_translation**\n- product_category_name (TEXT): Portuguese name\n- product_category_name_english (TEXT): English translation\n\n**9. geolocation**\n- geolocation_zip_code_prefix (BIGINT): ZIP code\n- geolocation_lat, geolocation_lng (DOUBLE): Coordinates\n- geolocation_city, geolocation_state (TEXT): Location\n\n### Relationships\n```\ncustomers → orders → order_items → products\n                  ↓              ↓\n            order_payments    sellers\n                  ↓\n            order_reviews\n\nproduct_category_translation ← products (via category name)\n```\n\n### Critical Business Rules\n\n**ALWAYS** follow these rules when generating queries:\n\n1. **Revenue Calculations**: Only count orders where `order_status = 'delivered'`\n2. **Total Order Value**: `SUM(price + freight_value)` from order_items\n3. **Timestamps**: Convert TEXT to timestamp: `field::timestamp`\n4. **Category Names**: Use English via LEFT JOIN with product_category_translation\n5. **Unique Customers**: Use `customer_unique_id` not `customer_id`\n6. **Date Aggregation**: Use `DATE_TRUNC('month', timestamp::timestamp)` for monthly\n7. **NULL Handling**: Use `COALESCE()` for null values\n\n---\n\n## Available Tools\n\n### Database Query Tool\n\n**Name**: `query_database`\n\n**Description**: Executes SQL queries against the Brazilian E-Commerce PostgreSQL database. This tool handles SQL generation, validation, and execution automatically.\n\n**When to use**:\n- User asks for data, statistics, or insights\n- User wants to see orders, customers, products, revenue, etc.\n- User asks questions like \"what\", \"how many\", \"show me\", \"find\", \"top\", \"list\"\n- User wants visualizations or reports\n\n**When NOT to use**:\n- Greetings: \"hello\", \"hi\", \"hey\"\n- Gratitude: \"thanks\", \"thank you\"\n- General chat: \"how are you\", \"what can you do\"\n- Follow-up questions about previous context (answer from memory)\n- Clarification requests\n\n**Input**: Natural language query description\n\n**Output**: Returns object with:\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"headers\": [\"column1\", \"column2\"],\n    \"rows\": [[\"value1\", \"value2\"], ...]\n  },\n  \"row_count\": 10,\n  \"sql_executed\": \"SELECT ...\"\n}\n```\n\n---\n\n## Response Format\n\nYou MUST return a valid JSON object with this structure:\n\n```json\n{\n  \"response\": \"Your natural language response here\",\n  \"data\": {\n    \"headers\": [\"col1\", \"col2\"],\n    \"rows\": [[\"val1\", \"val2\"], [\"val3\", \"val4\"]]\n  },\n  \"visualization\": {\n    \"type\": \"bar|line|pie\",\n    \"x_label\": \"Label for X axis\",\n    \"y_label\": \"Label for Y axis\",\n    \"labels\": [\"label1\", \"label2\"],\n    \"values\": [100, 200]\n  }\n}\n```\n\n### Field Descriptions\n\n**response** (required, string):\n- Natural language explanation of the results\n- Be conversational and friendly\n- Provide 1-2 insights or observations\n- 2-4 sentences max\n- Example: \"Based on the data, São Paulo (SP) leads with 41,000 customers, followed by Rio de Janeiro with 12,500. This makes sense as SP is Brazil's largest economic center.\"\n\n**data** (optional, object):\n- Only include if database query was executed\n- `headers`: Array of column names\n- `rows`: Array of arrays with data values\n- Keep to reasonable size (max 20 rows for display)\n\n**visualization** (optional, object):\n- Only include if data is suitable for charting\n- Criteria for charts:\n  - **Bar chart**: 2 columns (category + numeric), 2-20 rows\n  - **Line chart**: Time series data (dates + values)\n  - **Pie chart**: Categories with percentages or counts (max 8 slices)\n- Fields:\n  - `type`: \"bar\", \"line\", or \"pie\"\n  - `x_label`: X-axis label (for bar/line)\n  - `y_label`: Y-axis label (for bar/line)\n  - `labels`: Array of labels for each data point\n  - `values`: Array of numeric values\n\n---\n\n## Behavior Guidelines\n\n### When User Asks Data Questions\n\n1. **Understand Intent**: Identify what data they want\n2. **Call Database Tool**: Use natural language to describe the query\n3. **Analyze Results**: Review the returned data\n4. **Determine Visualization**:\n   - 2 columns + numeric data → Bar chart\n   - Time series → Line chart\n   - Category percentages → Pie chart\n   - Complex data → Table only\n5. **Craft Response**: Conversational explanation with insights\n6. **Return JSON**: Complete JSON object with all fields\n\n### When User Makes Conversation\n\n1. **No Database Call**: Respond directly without querying\n2. **Be Helpful**: Explain capabilities, suggest queries\n3. **Return JSON**: Simple response field only\n\n### Examples\n\n#### Example 1: Data Query\n\n**User**: \"What are the top 5 states by customer count?\"\n\n**Your Action**:\n1. Call `query_database` with: \"Get the top 5 states by customer count, showing state name and total customers\"\n2. Receive data\n3. Return JSON:\n\n```json\n{\n  \"response\": \"São Paulo (SP) leads with 41,000 customers, followed by Rio de Janeiro (RJ) with 12,500 and Minas Gerais (MG) with 11,600. These three states represent over 65% of the customer base, which aligns with Brazil's economic centers.\",\n  \"data\": {\n    \"headers\": [\"State\", \"Customer Count\"],\n    \"rows\": [\n      [\"SP\", 41000],\n      [\"RJ\", 12500],\n      [\"MG\", 11600],\n      [\"RS\", 5600],\n      [\"PR\", 5100]\n    ]\n  },\n  \"visualization\": {\n    \"type\": \"bar\",\n    \"x_label\": \"State\",\n    \"y_label\": \"Customer Count\",\n    \"labels\": [\"SP\", \"RJ\", \"MG\", \"RS\", \"PR\"],\n    \"values\": [41000, 12500, 11600, 5600, 5100]\n  }\n}\n```\n\n#### Example 2: Greeting\n\n**User**: \"Hello!\"\n\n**Your Action**: No database call needed\n\n```json\n{\n  \"response\": \"Hello! I'm your AI Data Analyst for the Brazilian E-Commerce database. I can help you analyze orders, customers, products, revenue, and more from over 100,000 orders. Try asking questions like 'What were the top selling products?' or 'Show monthly revenue for 2017'. What would you like to know?\"\n}\n```\n\n\n#### Example 3: Table Only (No Chart)\n\n**User**: \"Show me 5 sample orders with customer info\"\n\n**Your Action**: Data too complex for simple chart\n\n```json\n{\n  \"response\": \"Here are 5 sample orders with customer information. Each order includes the order ID, customer location, purchase date, and order status. All of these are from São Paulo, Brazil's largest state.\",\n  \"data\": {\n    \"headers\": [\"Order ID\", \"City\", \"State\", \"Purchase Date\", \"Status\"],\n    \"rows\": [\n      [\"abc123...\", \"sao paulo\", \"SP\", \"2017-05-15\", \"delivered\"],\n      [\"def456...\", \"campinas\", \"SP\", \"2017-06-20\", \"delivered\"],\n      [\"...continues...\"]\n    ]\n  }\n}\n```\n\n---\n\n## Important Reminders\n\n### DO:\n✅ Always return valid JSON\n✅ Use the database tool for data questions\n✅ Filter by `order_status = 'delivered'` for revenue\n✅ Provide insights in your response\n✅ Create visualizations when data is suitable (2 cols, numeric)\n✅ Keep responses concise (2-4 sentences)\n✅ Use English category names\n✅ Handle follow-up questions using context\n\n### DON'T:\n❌ Don't return plain text (always JSON)\n❌ Don't query database for greetings/chat\n❌ Don't include canceled orders in revenue\n❌ Don't show Portuguese category names\n❌ Don't create charts for complex multi-column data\n❌ Don't write SQL yourself (the tool does it)\n❌ Don't forget to include \"response\" field in JSON\n\n---\n\n## Final Checklist\n\nBefore returning your response, verify:\n\n- [ ] Is it valid JSON?\n- [ ] Does it have the \"response\" field?\n- [ ] If database was queried, is \"data\" included?\n- [ ] If data is 2 columns + numeric, is \"visualization\" included?\n- [ ] Is the response conversational and insightful?\n- [ ] Did I filter by delivered orders for revenue?\n\n---\nThe Current Date = {{ $now }}",
+          "returnIntermediateSteps": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        256,
+        0
+      ],
+      "id": "d92cb3cd-1c65-4197-a98e-1c022872232a",
+      "name": "Data Analyst AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "gpt-5.1"
+        },
+        "options": {
+          "reasoningEffort": "medium"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        96,
+        288
+      ],
+      "id": "e8d9a4b6-cb9e-4d4e-b930-ba92f0c9cf61",
+      "name": "GPT 5.1",
+      "credentials": {
+        "openAiApi": {
+          "id": "5YlSJBJUm1eyEpgy",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "options": {
+          "reasoningEffort": "low"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        368
+      ],
+      "id": "6067e502-19b8-4577-8dc1-12246832e369",
+      "name": "GPT-5-mini",
+      "credentials": {
+        "openAiApi": {
+          "id": "5YlSJBJUm1eyEpgy",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.body.session_id }}",
+        "tableName": "chat_histories"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        288
+      ],
+      "id": "57df62df-d818-47fc-a8d0-459ad1bc8942",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "uhqBsdfDZ97Vm362",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"response\": {\n      \"type\": \"string\",\n      \"description\": \"Natural language explanation with insights (required)\"\n    },\n    \"data\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"headers\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"rows\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          }\n        }\n      }\n    },\n    \"visualization\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"type\": {\n          \"type\": \"string\",\n          \"enum\": [\"bar\", \"line\", \"pie\"]\n        },\n        \"x_label\": {\n          \"type\": \"string\"\n        },\n        \"y_label\": {\n          \"type\": \"string\"\n        },\n        \"labels\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"values\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"number\"\n          }\n        }\n      }\n    }\n  },\n  \"required\": [\"response\"]\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        208
+      ],
+      "id": "17e9455e-8029-4d6d-b7da-a87b0b4fd5bb",
+      "name": "Structured Output Parser"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Data Analyst AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "database_query": {
+      "ai_tool": [
+        [
+          {
+            "node": "Data Analyst AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Analyst AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 5.1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Data Analyst AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5-mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Data Analyst AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Data Analyst AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "ac4829ad-981a-4bad-a76b-7c3d00d2a44f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eadb7bae8a80c6597b35e87bf8a865dab741bb09167496c0cdd169ffcbeaa3a8"
+  },
+  "nodeGroups": [],
+  "id": "8L3za7TQuztBPQjW",
+  "tags": [
+    {
+      "updatedAt": "2026-07-16T19:00:04.356Z",
+      "createdAt": "2026-07-16T19:00:04.356Z",
+      "id": "CjPXjyMMMa1phk9l",
+      "name": "Agent"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+# Environment files (contain secrets — never commit these)
+.env
+.env.*
+!.env.example
+!frontend/.env.local.example
+
+# n8n local data (only relevant if you ever run n8n outside Docker)
+.n8n/
+
+# Frontend build artifacts (also covered by frontend/.gitignore)
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# OS / editor cruft
+.DS_Store
+*.log
+.vscode/
+.idea/
