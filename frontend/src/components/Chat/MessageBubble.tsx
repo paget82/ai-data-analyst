@@ -90,7 +90,7 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
 
           <VisualizationSwitch message={message} />
 
-          {!message.visualization && message.data && <DataTable data={message.data} />}
+          {message.data && <DataTable data={message.data} />}
         </div>
       </div>
     </div>

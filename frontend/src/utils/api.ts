@@ -3,7 +3,7 @@ import type { ApiRequest, ApiResponse } from '../types';
 const WEBHOOK_URL = import.meta.env.VITE_N8N_WEBHOOK_URL;
 const AUTH_TOKEN = import.meta.env.VITE_N8N_AUTH_TOKEN;
 
-const TIMEOUT_MS = 48000
+const TIMEOUT_MS = 120000
 export class ApiError extends Error {
   isTimeout: boolean;
 
