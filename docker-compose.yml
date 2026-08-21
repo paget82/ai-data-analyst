@@ -7,7 +7,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-analyst}
       - POSTGRES_DB=${POSTGRES_DB:-olist}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Only run on a completely fresh volume (Postgres's own convention).
@@ -29,7 +29,7 @@ services:
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
       - PGADMIN_CONFIG_SERVER_MODE=False
     ports:
-      - "5050:80"
+      - "${PGADMIN_PORT:-5050}:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
@@ -41,12 +41,18 @@ services:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: data-analyst-n8n
     ports:
-      - "5679:5678"
+      - "${N8N_PORT:-5679}:5678"
 
     environment:
       - N8N_SECURE_COOKIE=false
       - TZ=${TZ:-Europe/Prague}
       - GENERIC_TIMEZONE=${TZ:-Europe/Prague}
+      # n8n listens on 5678 *inside* the container regardless of the host
+      # port mapping below (5679:5678). Without WEBHOOK_URL, n8n builds the
+      # "Production URL" shown in the UI from its internal port (5678),
+      # which won't match what's reachable from your host. Setting it
+      # explicitly makes the displayed URL correct.
+      - WEBHOOK_URL=${N8N_WEBHOOK_BASE_URL:-http://localhost:5679/}
 
     volumes:
       - n8n_data:/home/node/.n8n
@@ -73,7 +79,7 @@ services:
         VITE_N8N_AUTH_TOKEN: ${VITE_N8N_AUTH_TOKEN}
     container_name: data-analyst-frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     restart: unless-stopped
     depends_on:
       n8n:

@@ -30,7 +30,15 @@ Anthropic key.
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- **Docker and Docker Compose.**
+  - Windows/macOS: install [Docker Desktop](https://docs.docker.com/get-docker/)
+    and make sure it's actually **running** before using any `docker`
+    command (it provides the background engine the CLI talks to — the
+    terminal commands will fail with a connection error otherwise). Free
+    alternative: [Rancher Desktop](https://rancherdesktop.io/).
+  - Linux: no desktop app needed — install
+    [Docker Engine](https://docs.docker.com/engine/install/) directly as a
+    system service (e.g. `curl -fsSL https://get.docker.com | sh && sudo systemctl enable --now docker`).
 - An [OpenAI](https://platform.openai.com/api-keys) API key
 - An [Anthropic](https://console.anthropic.com/settings/keys) API key
 - Node.js 18+ (only if you want to run the frontend outside Docker)
@@ -125,11 +133,35 @@ Open **http://localhost:5679**, create your owner account, then:
    - Open the **`database_query`** node and re-select the sub-flow under
      **Workflow** — the imported copy gets a new internal ID, so this link
      needs to be reconnected manually.
+   - **Check `Workflow Inputs` → `query_description` right after
+     reconnecting.** Re-selecting the sub-flow sometimes resets this field
+     to a plain empty/Fixed value instead of the expression that lets the
+     agent fill it in. It must be set to **Expression** with exactly:
+     ```
+     {{ $fromAI('query_description', 'Natural language description of what data the user wants to query from the database', 'string') }}
+     ```
+     If it's missing, the sub-flow receives an empty query, its SQL
+     generator produces something invalid, and the safety-fallback query
+     `SELECT 1 AS result` runs instead — which looks like a working
+     response (a real table renders) but is actually meaningless data. If
+     every answer looks suspiciously flat (e.g. "1 order" no matter what
+     you ask), check this first.
+   - The `Webhook` node already has **Allowed Origins (CORS)** set to
+     `http://localhost:3000` (Options → Allowed Origins (CORS)) so the
+     browser-based frontend is allowed to call it. If you serve the frontend
+     from a different origin/port, update this value to match — otherwise
+     the browser will silently block every request with a CORS error
+     (visible in DevTools → Console/Network, not in the frontend's generic
+     error message).
 5. **Activate** both workflows (toggle in the top-right of each workflow).
 6. Open the `Webhook` node in the main flow and copy its **Production URL**.
    It should look like `http://localhost:5679/webhook/data-analyst-agent`,
    matching `VITE_N8N_WEBHOOK_URL` in your `.env`. Update `.env` if the path
    differs.
+   - If it instead shows port **5678** (n8n's internal port) instead of
+     **5679** (the host port from `docker-compose.yml`'s `"5679:5678"`
+     mapping), your `.env` is missing `N8N_WEBHOOK_BASE_URL` — see
+     `.env.example`, then `docker compose up -d n8n` to apply it.
 
 ## 4. Start the frontend
 
@@ -192,6 +224,21 @@ frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/RE
 - **`database_query` tool fails after import** — re-open the node and
   re-select the sub-flow workflow; imported workflow IDs don't match the
   original export.
+- **Frontend shows "Sorry, I encountered an error" with no other detail** —
+  almost always a CORS block: the browser calls `localhost:5679` from
+  `localhost:3000` and silently rejects the response if n8n doesn't send
+  CORS headers. Open browser DevTools (F12) → Console/Network and look for
+  "CORS" or "Access-Control-Allow-Origin" — if you see it, open the
+  `Webhook` node in n8n → Options → **Allowed Origins (CORS)** and make sure
+  it matches the exact origin the frontend runs on (`http://localhost:3000`
+  by default). Requests made with `curl`/`Invoke-RestMethod`/Postman are
+  *not* subject to CORS, so they'll succeed even when the frontend fails —
+  that mismatch is the tell.
+- **Webhook's Production URL shows port 5678 instead of 5679** — n8n
+  listens on 5678 inside the container and doesn't know about the
+  `"5679:5678"` host port mapping unless told via `WEBHOOK_URL`. Make sure
+  `N8N_WEBHOOK_BASE_URL=http://localhost:5679/` is set in `.env`, then
+  `docker compose up -d n8n` to restart it with the variable applied.
 - **n8n Postgres credential fails to connect** — use host `postgres`, not
   `localhost`; n8n and Postgres talk to each other over the Docker Compose
   network, not your machine's.
@@ -201,6 +248,11 @@ frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/RE
 - **Frontend env changes don't show up** — `VITE_*` vars are baked in at
   Docker build time; re-run `docker compose up -d --build frontend` after
   editing `.env`.
+- **Port already in use / wrong app shows up at localhost:3000 (or 5679,
+  5432, 5050)** — another project on your machine is already using that
+  port. Check with `docker ps`, then either stop that container or change
+  `FRONTEND_PORT` / `N8N_PORT` / `POSTGRES_PORT` / `PGADMIN_PORT` in `.env`
+  and re-run `docker compose up -d --build`.
 
 ## License
 
