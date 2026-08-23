@@ -47,9 +47,7 @@ writing a single line of SQL themselves.
   </p>
 
 - **Postgres** — runs in its own container and auto-loads on first start with
-  a schema + sample dataset modeled on the Olist Brazilian E-Commerce.
-
-  **pgAdmin** is included as a web UI for it.
+  a schema + sample dataset modeled on the Olist Brazilian E-Commerce. **pgAdmin** is included as a web UI for it.
 
   <p align="center">
     <img src="images/pgAdmin.png" width="900">
