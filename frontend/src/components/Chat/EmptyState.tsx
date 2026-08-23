@@ -13,7 +13,7 @@ export function EmptyState({ onSelectSample }: EmptyStateProps) {
       </div>
       <div className="space-y-1.5">
         <h2 className="font-display font-bold text-lg text-slate-100">
-          Ask anything about your store
+          Ask anything about your data
         </h2>
         <p className="text-sm text-slate-400 max-w-sm">
           Query orders, customers, revenue, and reviews in plain language.

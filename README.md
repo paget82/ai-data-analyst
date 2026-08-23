@@ -1,32 +1,60 @@
 # AI Data Analyst Agent
 
-Ask questions about an e-commerce database in plain English (or Slovak, or
-anything) and get back a natural-language answer, a data table, and a chart —
-no SQL required. **Everything runs locally in Docker — no external accounts
-needed.**
 
-```
-┌─────────────┐      HTTPS webhook      ┌──────────────────────────┐      SQL      ┌───────────┐
-│  Frontend   │ ───────────────────────▶│  n8n (main-flow +        │ ─────────────▶│ Postgres  │
-│  (React)    │◀─────────────────────── │  sub-flow workflows)     │◀───────────── │ (Docker)  │
-└─────────────┘   JSON: answer/data/    └──────────────────────────┘   rows        └───────────┘
-                   chart
-```
+
+## Problem
+
+An e-commerce company had a large, well-structured operational database, but
+only people who could write SQL could actually get answers out of it.
+Business stakeholders had to go through a data team for even simple
+questions ("Show me the payment method distribution?", "What is the average delivery time by state?"), which slowed decision-making and put
+unnecessary load on technical staff.
+
+## Goal
+
+Build an AI-powered data analyst agent that lets anyone on the team ask
+questions about the company's data in plain, everyday language — and get
+back a clear written answer, plus a supporting table and chart — without
+writing a single line of SQL themselves.
+
+
+## Architecture
+
+<p align="center">
+  <img src="images/architecture.png" width="900">
+</p>
 
 - **Frontend** — React + TypeScript + Tailwind chat UI. Sends your message to
   an n8n webhook and renders the response (text, table, and/or chart).
+
+  <p align="center">
+    <img src="images/loop.gif" width="900">
+  </p>
+
 - **n8n (`main-flow`)** — a LangChain agent (GPT) that talks to you, decides
   when it needs data, and calls the `sub-flow` as a tool. Chat history is
   stored in Postgres.
+
+  <p align="center">
+    <img src="images/main_flow.png" width="900">
+  </p>
+
 - **n8n (`sub-flow`)** — turns a natural-language data request into a SQL
   query (Anthropic/Claude), validates it, and runs it against Postgres.
+
+  <p align="center">
+    <img src="images/sub_flow.png" width="900">
+  </p>
+
 - **Postgres** — runs in its own container and auto-loads on first start with
-  a schema + sample dataset modeled on
-  [Olist Brazilian E-Commerce](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
+  a schema + sample dataset modeled on the Olist Brazilian E-Commerce.
+
   **pgAdmin** is included as a web UI for it.
 
-Only two things happen outside Docker: getting an OpenAI key and an
-Anthropic key.
+  <p align="center">
+    <img src="images/pgAdmin.png" width="900">
+  </p>
+
 
 ## Prerequisites
 
@@ -41,7 +69,7 @@ Anthropic key.
     system service (e.g. `curl -fsSL https://get.docker.com | sh && sudo systemctl enable --now docker`).
 - An [OpenAI](https://platform.openai.com/api-keys) API key
 - An [Anthropic](https://console.anthropic.com/settings/keys) API key
-- Node.js 18+ (only if you want to run the frontend outside Docker)
+
 
 ## 1. Configure environment variables
 
@@ -69,38 +97,14 @@ The repo ships with a small **synthetic sample dataset** (few hundred rows,
 same filenames/columns as the real Olist dataset) so the stack is fully
 functional right after cloning.
 
-**Want the real ~100k-order Olist dataset?** Download the CSVs from
-[Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (free
-account required), drop them into `db/data/` using the **exact same
-filenames**, overwriting the sample files, then reset the volume so the init
-scripts run again:
 
-```bash
-docker compose down -v postgres     # wipes only the Postgres data volume
-docker compose up -d postgres pgadmin
-```
 
 Browse the data at **http://localhost:5050** (pgAdmin — log in with
 `PGADMIN_DEFAULT_EMAIL` / `PGADMIN_DEFAULT_PASSWORD` from `.env`, then add a
 new server with host `postgres`, port `5432`, and the `POSTGRES_USER` /
 `POSTGRES_PASSWORD` from `.env`).
 
-**Recommended:** once the stack is running, apply
-[`db/readonly_role.sql`](./db/readonly_role.sql) to create a read-only
-database role for the AI-generated SQL to run under — a real safety net
-beyond just prompting the model to behave:
 
-```bash
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < db/readonly_role.sql
-```
-
-(Edit the password inside that file first.) See the comments in the file for
-how to wire the resulting role into n8n.
-
-Using a different dataset entirely? Adjust `db/init/01-schema.sql` and
-`db/init/02-load-data.sql` to match your tables/CSVs, and rewrite the schema
-description inside the `SQL-query-Generator` node's prompt in
-`n8n/workflows/sub-flow.json` after importing it into n8n.
 
 ## 3. Start n8n and import the workflows
 
@@ -119,8 +123,7 @@ Open **http://localhost:5679**, create your owner account, then:
      name — n8n reaches it over the internal Docker network, not
      `localhost`), Port: `5432`, Database/User/Password: your `POSTGRES_DB` /
      `POSTGRES_USER` / `POSTGRES_PASSWORD` from `.env`, SSL: `disable`.
-     If you created the read-only role, add a *second* Postgres credential
-     for it too.
+     
 2. **Import both workflows**: Workflows → Add workflow → **⋯ menu → Import
    from File**, and import `n8n/workflows/sub-flow.json` first, then
    `n8n/workflows/main-flow.json`.
@@ -146,13 +149,7 @@ Open **http://localhost:5679**, create your owner account, then:
      response (a real table renders) but is actually meaningless data. If
      every answer looks suspiciously flat (e.g. "1 order" no matter what
      you ask), check this first.
-   - The `Webhook` node already has **Allowed Origins (CORS)** set to
-     `http://localhost:3000` (Options → Allowed Origins (CORS)) so the
-     browser-based frontend is allowed to call it. If you serve the frontend
-     from a different origin/port, update this value to match — otherwise
-     the browser will silently block every request with a CORS error
-     (visible in DevTools → Console/Network, not in the frontend's generic
-     error message).
+  
 5. **Activate** both workflows (toggle in the top-right of each workflow).
 6. Open the `Webhook` node in the main flow and copy its **Production URL**.
    It should look like `http://localhost:5679/webhook/data-analyst-agent`,
@@ -173,14 +170,9 @@ Open **http://localhost:3000** and start asking questions
 ("What were total sales in 2017?", "Top 5 product categories by revenue",
 "Average delivery time by state").
 
-Prefer running the frontend outside Docker for local development?
 
-```bash
-cd frontend
-cp .env.local.example .env.local   # fill in the same two values as above
-npm install
-npm run dev
-```
+
+
 
 ## Everything at once
 
@@ -193,7 +185,7 @@ docker compose up -d --build
 - Frontend: http://localhost:3000
 - n8n: http://localhost:5679
 - pgAdmin: http://localhost:5050
-- Postgres (for external tools like DBeaver/psql): `localhost:5432`
+
 
 ## Project structure
 
@@ -224,16 +216,7 @@ frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/RE
 - **`database_query` tool fails after import** — re-open the node and
   re-select the sub-flow workflow; imported workflow IDs don't match the
   original export.
-- **Frontend shows "Sorry, I encountered an error" with no other detail** —
-  almost always a CORS block: the browser calls `localhost:5679` from
-  `localhost:3000` and silently rejects the response if n8n doesn't send
-  CORS headers. Open browser DevTools (F12) → Console/Network and look for
-  "CORS" or "Access-Control-Allow-Origin" — if you see it, open the
-  `Webhook` node in n8n → Options → **Allowed Origins (CORS)** and make sure
-  it matches the exact origin the frontend runs on (`http://localhost:3000`
-  by default). Requests made with `curl`/`Invoke-RestMethod`/Postman are
-  *not* subject to CORS, so they'll succeed even when the frontend fails —
-  that mismatch is the tell.
+
 - **Webhook's Production URL shows port 5678 instead of 5679** — n8n
   listens on 5678 inside the container and doesn't know about the
   `"5679:5678"` host port mapping unless told via `WEBHOOK_URL`. Make sure
@@ -248,11 +231,7 @@ frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/RE
 - **Frontend env changes don't show up** — `VITE_*` vars are baked in at
   Docker build time; re-run `docker compose up -d --build frontend` after
   editing `.env`.
-- **Port already in use / wrong app shows up at localhost:3000 (or 5679,
-  5432, 5050)** — another project on your machine is already using that
-  port. Check with `docker ps`, then either stop that container or change
-  `FRONTEND_PORT` / `N8N_PORT` / `POSTGRES_PORT` / `PGADMIN_PORT` in `.env`
-  and re-run `docker compose up -d --build`.
+
 
 ## License
 
