@@ -396,6 +396,25 @@ docker compose up -d --build
 - n8n: http://localhost:5679
 - pgAdmin: http://localhost:5050
 
+
+## Project structure
+
+```
+docker-compose.yml         # postgres + pgadmin + n8n + frontend
+.env.example                 # docker-compose environment template
+db/
+  init/
+    01-schema.sql              # table definitions (auto-run on first start)
+    02-load-data.sql            # COPY commands loading db/data/*.csv
+  data/                       # CSVs — ships with a synthetic sample, swap for real Olist data
+  readonly_role.sql           # optional read-only DB role for safer SQL execution
+n8n/
+  workflows/
+    main-flow.json            # chat agent, memory, webhook
+    sub-flow.json               # NL → SQL generation + execution
+frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/README.md)
+```
+
 ## Troubleshooting
 
 - **Frontend shows a timeout / can't reach n8n** — confirm the main-flow
@@ -407,10 +426,12 @@ docker compose up -d --build
 - **`database_query` tool fails after import** — re-open the node and
   re-select the sub-flow workflow; imported workflow IDs don't match the
   original export.
-- **Every answer looks suspiciously flat regardless of the question** —
-  check the `query_description` expression on the `database_query` node
-  (see step 4 above); if it was reset to a fixed empty value, the sub-flow
-  silently falls back to `SELECT 1 AS result`.
+
+- **Webhook's Production URL shows port 5678 instead of 5679** — n8n
+  listens on 5678 inside the container and doesn't know about the
+  `"5679:5678"` host port mapping unless told via `WEBHOOK_URL`. Make sure
+  `N8N_WEBHOOK_BASE_URL=http://localhost:5679/` is set in `.env`, then
+  `docker compose up -d n8n` to restart it with the variable applied.
 - **n8n Postgres credential fails to connect** — use host `postgres`, not
   `localhost`; n8n and Postgres talk to each other over the Docker Compose
   network, not your machine's.
