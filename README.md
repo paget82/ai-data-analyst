@@ -257,23 +257,7 @@ cost per request.
 
 - pgAdmin
 
-## Project structure
 
-```
-docker-compose.yml         # postgres + pgadmin + n8n + frontend
-.env.example                # docker-compose environment template
-db/
-  init/
-    01-schema.sql             # table definitions (auto-run on first start)
-    02-load-data.sql          # COPY commands loading db/data/*.csv
-  data/                      # CSVs — ships with a synthetic sample
-images/                    # screenshots + demo GIF used in this README
-n8n/
-  workflows/
-    main-flow.json            # chat agent, memory, webhook
-    sub-flow.json              # NL → SQL generation + execution
-frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/README.md)
-```
 
 ## Getting Started
 
