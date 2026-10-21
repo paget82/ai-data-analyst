@@ -73,6 +73,11 @@ database-backed question answering — not a general-purpose BI tool.
   <img src="images/architecture.png" width="900">
 </p>
 
+> **Note:** this project originally orchestrated the two functions below as
+> two separate n8n workflows. They have since been reimplemented as a single
+> Python service in `backend/app.py` with the same two-stage design and the
+> same request/response contract. The original n8n version is preserved
+> under the [`n8n-version` tag](https://github.com/paget82/ai-data-analyst/tree/n8n-version).
 
 
 ### Frontend
