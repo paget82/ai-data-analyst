@@ -19,3 +19,7 @@ frontend/vite.config.d.ts
 *.log
 .vscode/
 .idea/
+
+venv/
+.venv/
+__pycache__/
