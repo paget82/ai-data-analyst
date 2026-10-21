@@ -7,11 +7,11 @@ RUN npm ci
 COPY . .
 
 # Baked in at build time so the compiled JS bundle points at the right
-# n8n webhook URL and auth token.
-ARG VITE_N8N_WEBHOOK_URL
-ARG VITE_N8N_AUTH_TOKEN
-ENV VITE_N8N_WEBHOOK_URL=${VITE_N8N_WEBHOOK_URL}
-ENV VITE_N8N_AUTH_TOKEN=${VITE_N8N_AUTH_TOKEN}
+# backend URL and auth token.
+ARG VITE_API_URL
+ARG VITE_API_AUTH_TOKEN
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_API_AUTH_TOKEN=${VITE_API_AUTH_TOKEN}
 
 RUN npm run build
 

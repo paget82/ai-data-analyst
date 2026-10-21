@@ -1,7 +1,7 @@
 import type { ApiRequest, ApiResponse } from '../types';
 
-const WEBHOOK_URL = import.meta.env.VITE_N8N_WEBHOOK_URL;
-const AUTH_TOKEN = import.meta.env.VITE_N8N_AUTH_TOKEN;
+const WEBHOOK_URL = import.meta.env.VITE_API_URL;
+const AUTH_TOKEN = import.meta.env.VITE_API_AUTH_TOKEN;
 
 const TIMEOUT_MS = 120000
 export class ApiError extends Error {
@@ -17,7 +17,7 @@ export class ApiError extends Error {
 export async function sendMessage(payload: ApiRequest): Promise<ApiResponse> {
   if (!WEBHOOK_URL) {
     throw new ApiError(
-      'Missing VITE_N8N_WEBHOOK_URL. Set it in your .env.local file.'
+      'Missing VITE_API_URL. Set it in your .env.local file.'
     );
   }
 

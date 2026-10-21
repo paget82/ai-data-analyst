@@ -11,7 +11,7 @@ const PAGE_SIZE = 20;
 
 export function DataTable({ data }: DataTableProps) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const visibleRows = data.rows.slice(0, visibleCount);
   const hasMore = visibleCount < data.rows.length;
 

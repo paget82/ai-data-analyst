@@ -5,8 +5,7 @@ e-commerce database in plain natural language, without writing SQL. It
 translates a business question into SQL, executes it against a live
 database, and returns a natural-language answer alongside a supporting
 table and chart. The system is built as a fully containerized, self-hosted
-stack combining a React frontend, n8n-based agent orchestration, and
-PostgreSQL.
+stack combining a React frontend, a Python agent backend, and PostgreSQL.
 
 ## Demo
 
@@ -65,7 +64,8 @@ database-backed question answering — not a general-purpose BI tool.
 - Fully reproducible local environment via Docker Compose, including
   automatic database schema and sample-data initialization on first start
 - Clear separation between conversational orchestration and SQL
-  generation/execution, implemented as two distinct n8n workflows
+  generation/execution, implemented as two distinct functions inside the
+  backend service
 
 ## Architecture
 
@@ -73,45 +73,41 @@ database-backed question answering — not a general-purpose BI tool.
   <img src="images/architecture.png" width="900">
 </p>
 
+
+
 ### Frontend
 
-React + TypeScript + Tailwind chat UI. It sends the user's message to an
-n8n webhook (authenticated with a header-based API key) and renders
-whatever the workflow returns: a text answer, and optionally a data table
+React + TypeScript + Tailwind chat UI. It sends the user's message to the
+backend's webhook endpoint (authenticated with a header-based API key) and
+renders whatever comes back: a text answer, and optionally a data table
 and/or chart.
 
-### Main Agent Workflow (`main-flow`)
+### Main Agent (`run_agent` in `backend/app.py`)
 
-<p align="center">
-  <img src="images/main_flow.png" width="900">
-</p>
-
-Receives the incoming message via webhook and runs a LangChain agent
-(backed by an OpenAI chat model) that:
+Receives the incoming message and runs a tool-calling loop against an
+OpenAI chat model that:
 
 - Carries on the conversation with the user
 - Decides, per message, whether answering requires querying the database
-- If so, calls the database-query workflow as a tool, passing a
+- If so, calls the `database_query` function as a tool, passing a
   natural-language description of the data need
 - Reads and writes conversation history to PostgreSQL, so multi-turn
   context is preserved across messages
-- Produces a structured output (via an output parser) so the frontend
-  receives a predictable response shape rather than free-form text
+- Produces a structured output (validated/auto-fixed against a JSON schema)
+  so the frontend receives a predictable response shape rather than
+  free-form text
 
-### Database Query Workflow (`sub-flow`)
-
-<p align="center">
-  <img src="images/sub_flow.png" width="900">
-</p>
+### Database Query Tool (`database_query` in `backend/app.py`)
 
 Invoked by the main agent as a tool. It:
 
 1. Receives a natural-language description of the requested data
 2. Generates a SQL query using an LLM (Anthropic Claude)
-3. Runs the generated query through a validation node
+3. Runs the generated query through a validation step (SELECT/WITH only,
+   destructive statements blocked)
 4. If validation passes, executes the query against PostgreSQL; if it
-   fails, execution is skipped and a safe fallback result is returned
-5. Formats the result and returns it to the calling workflow
+   fails, execution is skipped and a safe error result is returned instead
+5. Formats the result and returns it to the calling agent
 
 ### PostgreSQL
 
@@ -127,37 +123,35 @@ dependency.
 Included as a web-based UI for inspecting the PostgreSQL database (tables,
 data, running ad-hoc queries) during development and debugging.
 
-## Why are the AI workflows separated?
+## Why are the two responsibilities separated?
 
-<p align="center">
-  <img src="images/workflow.png" width="600">
-</p>
 
-The system is split into two workflows: one responsible for conversational
-reasoning and orchestration (`main-flow`), and one responsible purely for
-turning a data request into SQL and executing it (`sub-flow`). The main
-agent never generates or runs SQL directly — it delegates that
-responsibility entirely to the sub-flow through a tool call.
+
+The backend is split into two functions: one responsible for conversational
+reasoning and orchestration (`run_agent`), and one responsible purely for
+turning a data request into SQL and executing it (`database_query`). The
+main agent never generates or runs SQL directly — it delegates that
+responsibility entirely to `database_query` through a tool call.
 
 This separation keeps the two concerns independent: the conversational
 agent's prompt and behavior can be iterated on without touching SQL
 generation logic, and the SQL generation/validation logic can be tested,
 adjusted, or swapped out without affecting how the agent talks to the
-user. It also means the sub-flow could, in principle, be reused by a
+user. It also means `database_query` could, in principle, be reused by a
 different caller if the frontend or the calling agent changed.
 
 ## AI / LLM Pipeline
 
 1. The user submits a question through the frontend.
-2. The main agent (OpenAI chat model, LangChain) reasons about the message
-   and decides whether it needs data from the database.
+2. The main agent (OpenAI chat model) reasons about the message and
+   decides whether it needs data from the database.
 3. If it does, the agent invokes the `database_query` tool, passing a
    natural-language description of what's needed as the tool input.
-4. The sub-flow's SQL-generation step (Anthropic Claude) turns that
-   description into a SQL query.
-5. The generated query passes through a validation node before it is
+4. The SQL-generation step (Anthropic Claude) turns that description into
+   a SQL query.
+5. The generated query passes through a validation step before it is
    allowed to run.
-6. The query is executed against PostgreSQL (or skipped, with a fallback
+6. The query is executed against PostgreSQL (or skipped, with an error
    result, if validation fails).
 7. The result is returned to the main agent as the tool's output.
 8. The main agent incorporates the result into a structured final
@@ -166,20 +160,21 @@ different caller if the frontend or the calling agent changed.
 
 Two different LLM providers are used for two different responsibilities:
 OpenAI for conversational reasoning and orchestration in the main agent,
-and Anthropic Claude for SQL generation in the sub-flow.
+and Anthropic Claude for SQL generation in `database_query`.
 
 
 
 ## Architecture Decisions
 
-### Why n8n?
+### Why a plain Python backend?
 
-n8n is used as the orchestration layer for both workflows: it hosts the
-LangChain agent, the tool-calling logic, memory persistence, and the SQL
-generation/validation/execution steps, without requiring a hand-written
-backend service. It provides a visual, inspectable representation of the
-agent and tool-calling flow, which was useful both for building and for
-debugging execution step-by-step.
+The backend is a single Flask service (`backend/app.py`) that hosts the
+agent's tool-calling loop, memory persistence, and the SQL
+generation/validation/execution steps. It was originally prototyped as two
+n8n workflows (visual, inspectable, good for iterating on the agent and
+tool-calling flow step-by-step); once the design was validated, it was
+reimplemented as plain Python for a smaller, code-reviewable, dependency-free
+runtime with no separate workflow-engine container to operate.
 
 ### Why PostgreSQL?
 
@@ -188,7 +183,7 @@ SQL-generation demo — it's the direct target for LLM-generated queries and
 also stores conversation memory for the main agent, so the whole stack
 only needs a single database engine.
 
-### Why separate workflows?
+### Why separate functions instead of one prompt?
 
 As described above, separating conversational orchestration from SQL
 generation/execution keeps each concern independently testable and
@@ -197,26 +192,25 @@ producing and running SQL.
 
 ### Why Docker Compose?
 
-The full stack (frontend, n8n, PostgreSQL, pgAdmin) is defined as a single
-Docker Compose file, so it can be started with one command and behaves the
-same way regardless of the host machine. Database schema and sample-data
-initialization run automatically on first start, so a fresh clone is
-runnable without manual data setup.
+The full stack (frontend, backend, PostgreSQL, pgAdmin) is defined as a
+single Docker Compose file, so it can be started with one command and
+behaves the same way regardless of the host machine. Database schema and
+sample-data initialization run automatically on first start, so a fresh
+clone is runnable without manual data setup.
 
 ### Why React + TypeScript?
 
 The frontend only needs to send a message and render a structured
 response (text, table, chart), so a lightweight React + TypeScript SPA was
-sufficient; TypeScript keeps the response contract between the workflow
+sufficient; TypeScript keeps the response contract between the backend
 and the UI explicit.
 
 ### Why two LLM providers?
 
 The main agent (OpenAI) and the SQL-generation step (Anthropic Claude) use
-different providers because they are separate workflow components with
-separate responsibilities — this follows directly from the workflow
-separation described above, rather than being a deliberate multi-provider
-strategy.
+different providers because they are separate components with separate
+responsibilities — this follows directly from the separation described
+above, rather than being a deliberate multi-provider strategy.
 
 ## Evaluation
 
@@ -236,10 +230,9 @@ cost per request.
 - TypeScript
 - Tailwind CSS
 
-### AI / Orchestration
+### Backend / AI Orchestration
 
-- n8n (workflow orchestration, tool calling)
-- LangChain (agent framework, used within n8n)
+- Python (Flask, tool-calling loop, SQL validation)
 - OpenAI (conversational agent)
 - Anthropic Claude (SQL generation)
 
@@ -281,9 +274,10 @@ cost per request.
 cp .env.example .env
 ```
 
-Edit `.env` — at minimum change `POSTGRES_PASSWORD`, `PGADMIN_DEFAULT_PASSWORD`,
-and `VITE_N8N_AUTH_TOKEN` (e.g. `openssl rand -hex 24`) to your own values.
-Everything else can stay at its default for a local run.
+Edit `.env` — at minimum set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and
+change `POSTGRES_PASSWORD`, `PGADMIN_DEFAULT_PASSWORD`, and `API_AUTH_TOKEN`
+(e.g. `openssl rand -hex 24`) to your own values. Everything else can stay
+at its default for a local run.
 
 ### 2. Start the database
 
@@ -306,57 +300,23 @@ Browse the data at **http://localhost:5050** (pgAdmin — log in with
 new server with host `postgres`, port `5432`, and the `POSTGRES_USER` /
 `POSTGRES_PASSWORD` from `.env`).
 
-### 3. Start n8n and import the workflows
+### 3. Start the backend
 
 ```bash
-docker compose up -d n8n
+docker compose up -d --build backend
 ```
 
-Open **http://localhost:5679**, create your owner account, then:
+This builds and starts the Python service (`backend/app.py`) that replaces
+n8n: it reads `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `API_AUTH_TOKEN`, and
+the `POSTGRES_*` values straight from `.env`, so there's no manual
+credential setup or workflow import step — it's ready as soon as the
+container is healthy.
 
-1. **Create credentials** (Settings → Credentials → Add credential):
-   - **Header Auth account** — Name: `X-API-Key`, Value: the same string you
-     put in `VITE_N8N_AUTH_TOKEN` in `.env`.
-   - **OpenAI account** — your OpenAI API key.
-   - **Anthropic account** — your Anthropic API key.
-   - **Postgres account** — Host: `postgres` (the Docker Compose service
-     name — n8n reaches it over the internal Docker network, not
-     `localhost`), Port: `5432`, Database/User/Password: your `POSTGRES_DB` /
-     `POSTGRES_USER` / `POSTGRES_PASSWORD` from `.env`, SSL: `disable`.
-2. **Import both workflows**: Workflows → Add workflow → **⋯ menu → Import
-   from File**, and import `n8n/workflows/sub-flow.json` first, then
-   `n8n/workflows/main-flow.json`.
-3. In **`AI Data Analyst Agent - sub flow`**, open every node that shows a
-   credential warning and pick the credential you created in step 1 (Postgres,
-   Anthropic).
-4. In **`AI Data Analyst Agent - main flow`**:
-   - Fix credentials on the `Webhook`, `GPT 5.1` / `GPT-5-mini`, and
-     `Postgres Chat Memory` nodes the same way.
-   - Open the **`database_query`** node and re-select the sub-flow under
-     **Workflow** — the imported copy gets a new internal ID, so this link
-     needs to be reconnected manually.
-   - **Check `Workflow Inputs` → `query_description` right after
-     reconnecting.** Re-selecting the sub-flow sometimes resets this field
-     to a plain empty/Fixed value instead of the expression that lets the
-     agent fill it in. It must be set to **Expression** with exactly:
-     ```
-     {{ $fromAI('query_description', 'Natural language description of what data the user wants to query from the database', 'string') }}
-     ```
-     If it's missing, the sub-flow receives an empty query, its SQL
-     generator produces something invalid, and the safety-fallback query
-     `SELECT 1 AS result` runs instead — which looks like a working
-     response (a real table renders) but is actually meaningless data. If
-     every answer looks suspiciously flat (e.g. "1 order" no matter what
-     you ask), check this first.
-5. **Activate** both workflows (toggle in the top-right of each workflow).
-6. Open the `Webhook` node in the main flow and copy its **Production URL**.
-   It should look like `http://localhost:5679/webhook/data-analyst-agent`,
-   matching `VITE_N8N_WEBHOOK_URL` in your `.env`. Update `.env` if the path
-   differs.
-   - If it instead shows port **5678** (n8n's internal port) instead of
-     **5679** (the host port from `docker-compose.yml`'s `"5679:5678"`
-     mapping), your `.env` is missing `N8N_WEBHOOK_BASE_URL` — see
-     `.env.example`, then `docker compose up -d n8n` to apply it.
+- Health check: `curl http://localhost:5679/healthz` → `{"status": "ok"}`
+- Chat endpoint: `POST http://localhost:5679/webhook/data-analyst-agent`
+  with header `X-API-Key: <your API_AUTH_TOKEN>` and body
+  `{"message": "...", "session_id": "..."}` — should match `VITE_API_URL`
+  in your `.env`.
 
 ### 4. Start the frontend
 
@@ -370,55 +330,47 @@ Open **http://localhost:3000** and start asking questions
 
 ### Everything at once
 
-Once the workflows are imported and activated:
-
 ```bash
 docker compose up -d --build
 ```
 
 - Frontend: http://localhost:3000
-- n8n: http://localhost:5679
+- Backend: http://localhost:5679
 - pgAdmin: http://localhost:5050
 
 
 ## Project structure
 
 ```
-docker-compose.yml         # postgres + pgadmin + n8n + frontend
+docker-compose.yml         # postgres + pgadmin + backend + frontend
 .env.example                 # docker-compose environment template
 db/
   init/
     01-schema.sql              # table definitions (auto-run on first start)
     02-load-data.sql            # COPY commands loading db/data/*.csv
   data/                       # CSVs — ships with a synthetic sample, swap for real Olist data
-  readonly_role.sql           # optional read-only DB role for safer SQL execution
-n8n/
-  workflows/
-    main-flow.json            # chat agent, memory, webhook
-    sub-flow.json               # NL → SQL generation + execution
+backend/
+  app.py                     # chat agent, memory, webhook, NL → SQL generation + execution
+  requirements.txt
+  Dockerfile
 frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/README.md)
 ```
 
 ## Troubleshooting
 
-- **Frontend shows a timeout / can't reach n8n** — confirm the main-flow
-  workflow is *activated* (not just saved), and that `VITE_N8N_WEBHOOK_URL`
-  matches the Production URL shown on the Webhook node exactly.
+- **Frontend shows a timeout / can't reach the backend** — confirm the
+  `backend` container is healthy (`docker compose ps`, or
+  `curl http://localhost:5679/healthz`), and that `VITE_API_URL` matches
+  its published address exactly.
 - **401 from the webhook** — the `X-API-Key` header sent by the frontend
-  (`VITE_N8N_AUTH_TOKEN`) must match the value of the Header Auth credential
-  in n8n.
-- **`database_query` tool fails after import** — re-open the node and
-  re-select the sub-flow workflow; imported workflow IDs don't match the
-  original export.
-
-- **Webhook's Production URL shows port 5678 instead of 5679** — n8n
-  listens on 5678 inside the container and doesn't know about the
-  `"5679:5678"` host port mapping unless told via `WEBHOOK_URL`. Make sure
-  `N8N_WEBHOOK_BASE_URL=http://localhost:5679/` is set in `.env`, then
-  `docker compose up -d n8n` to restart it with the variable applied.
-- **n8n Postgres credential fails to connect** — use host `postgres`, not
-  `localhost`; n8n and Postgres talk to each other over the Docker Compose
-  network, not your machine's.
+  (`VITE_API_AUTH_TOKEN`) must match the backend's `API_AUTH_TOKEN`.
+- **`database_query` tool returns errors** — check the backend logs
+  (`docker compose logs -f backend`); the SQL Anthropic generated and the
+  validation/DB error are included in the tool result.
+- **Backend can't connect to Postgres** — use host `postgres`, not
+  `localhost`; the backend and Postgres talk to each other over the Docker
+  Compose network, not your machine's. This is already set via
+  `POSTGRES_HOST=postgres` in `docker-compose.yml`.
 - **Data didn't load / table is empty** — the init scripts in `db/init/`
   only run on a *fresh* volume. If you'd already started Postgres once,
   reset with `docker compose down -v postgres` before trying again.
@@ -462,16 +414,16 @@ frontend/                   # React/TypeScript/Tailwind chat UI (see frontend/RE
 This project is a working example of an agent architecture that separates
 conversational reasoning from tool execution: a main agent decides *when*
 external data access is needed and delegates *how* to get it to a
-dedicated workflow, rather than mixing conversation and SQL generation
+dedicated function, rather than mixing conversation and SQL generation
 into a single step. It demonstrates natural-language-to-SQL generation
 with a validation gate before execution, conversational memory backed by a
-real database, a defined contract between the AI workflow and the
+real database, a defined contract between the backend and the
 frontend, and a fully reproducible, containerized local environment.
-Building and debugging it also surfaced concrete integration issues —  Docker container
-networking, workflow input wiring breaking silently after re-import, and
-distinguishing a genuine failure from a silent fallback response — that
-are representative of the kind of debugging involved in shipping an
-LLM-agent system end to end, beyond simply wiring an LLM to a database.
+Building and debugging it also surfaced concrete integration issues —
+Docker container networking, and distinguishing a genuine failure from a
+silent fallback response — that are representative of the kind of
+debugging involved in shipping an LLM-agent system end to end, beyond
+simply wiring an LLM to a database.
 
 ## License
 

@@ -2,7 +2,7 @@
 
 A dark-mode chat interface for querying an e-commerce database in plain
 language. Built with React, TypeScript, Tailwind CSS, and Chart.js. Talks
-directly to an n8n webhook — no custom backend required.
+directly to the backend's chat webhook (see `../backend`).
 
 ## Features
 
@@ -17,8 +17,8 @@ directly to an n8n webhook — no custom backend required.
 ## Requirements
 
 - Node.js 18+
-- An n8n workflow with a **published** webhook that accepts
-  `{ "message": string, "session_id": string }` and returns:
+- The backend service (`../backend`) running and reachable, accepting
+  `{ "message": string, "session_id": string }` and returning:
 
   ```json
   {
@@ -44,7 +44,7 @@ directly to an n8n webhook — no custom backend required.
    npm install
    ```
 
-2. Copy the example env file and fill in your webhook details:
+2. Copy the example env file and fill in your backend details:
 
    ```bash
    cp .env.local.example .env.local
@@ -53,14 +53,13 @@ directly to an n8n webhook — no custom backend required.
    Then edit `.env.local`:
 
    ```
-   VITE_N8N_WEBHOOK_URL=http://localhost:5678/webhook/data-analyst-agent
-   VITE_N8N_AUTH_TOKEN=your-header-auth-secret
+   VITE_API_URL=http://localhost:5679/webhook/data-analyst-agent
+   VITE_API_AUTH_TOKEN=your-header-auth-secret
    ```
 
-   - `VITE_N8N_WEBHOOK_URL` — the **production** webhook URL from your n8n
-     Webhook node (only works once the workflow is published/active).
-   - `VITE_N8N_AUTH_TOKEN` — the value your n8n "Header Auth" credential
-     expects. It's sent as the `X-API-Key` header on every request.
+   - `VITE_API_URL` — the backend's chat endpoint (must be running).
+   - `VITE_API_AUTH_TOKEN` — must match the backend's `API_AUTH_TOKEN`. It's
+     sent as the `X-API-Key` header on every request.
 
 3. Run the dev server:
 

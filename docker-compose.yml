@@ -37,29 +37,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
-    container_name: data-analyst-n8n
-    ports:
-      - "${N8N_PORT:-5679}:5678"
-
+  backend:
+    build:
+      context: ./backend
+    container_name: data-analyst-backend
     environment:
-      - N8N_SECURE_COOKIE=false
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - API_AUTH_TOKEN=${API_AUTH_TOKEN}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-analyst}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-analyst}
+      - POSTGRES_DB=${POSTGRES_DB:-olist}
       - TZ=${TZ:-Europe/Prague}
-      - GENERIC_TIMEZONE=${TZ:-Europe/Prague}
-      # n8n listens on 5678 *inside* the container regardless of the host
-      # port mapping below (5679:5678). Without WEBHOOK_URL, n8n builds the
-      # "Production URL" shown in the UI from its internal port (5678),
-      # which won't match what's reachable from your host. Setting it
-      # explicitly makes the displayed URL correct.
-      - WEBHOOK_URL=${N8N_WEBHOOK_BASE_URL:-http://localhost:5679/}
-
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./n8n/workflows:/workflows:ro
+    ports:
+      # Kept on 5679 by default so an existing VITE_API_URL pointing at
+      # http://localhost:5679/webhook/data-analyst-agent keeps working.
+      - "${BACKEND_PORT:-5679}:8000"
 
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -75,17 +73,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_N8N_WEBHOOK_URL: ${VITE_N8N_WEBHOOK_URL}
-        VITE_N8N_AUTH_TOKEN: ${VITE_N8N_AUTH_TOKEN}
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_API_AUTH_TOKEN: ${API_AUTH_TOKEN}
     container_name: data-analyst-frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     restart: unless-stopped
     depends_on:
-      n8n:
+      backend:
         condition: service_healthy
 
 volumes:
   postgres_data:
   pgadmin_data:
-  n8n_data:
